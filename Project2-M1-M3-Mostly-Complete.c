@@ -69,6 +69,7 @@ void (*IVT[3])(); // Interrupt Vector Table
 void timerInterrupt() {
 	// Handle timer interrupt, call dispatcher if needed
 	printf("TIMER INTERRUPT! 2 seconds.\n");
+	interruptFlag = 1;
 	sleep(2);
 	printf("Timer done. Setting another alarm in 8 seconds.\n");
 	alarm(8);
@@ -130,7 +131,7 @@ void scheduler() {
 				contextSwitch(currentProcess, nextProcess);
 				currentProcess = nextProcess;
 			} else {
-			printf("All processes complete.");
+				printf("All processes complete.\n");
 			}
 			return;
 		}
@@ -461,12 +462,17 @@ int main() {
     signal(SIGALRM, IVT[0]);
     alarm(1);
 
-    int inputchar;
-
     while (1) {
 	if (interruptFlag) {
 		interruptFlag = 0;
-		scheduler();
+		int nextProcess = (currentProcess + 1) % MAX_PROCESSES;
+		int count = 0;
+		while (processTable[nextProcess].state == 3) {
+			nextProcess = (count + 1) % MAX_PROCESSES;
+			count++;
+		}
+		dispatcher(currentProcess, nextProcess);
+		currentProcess = nextProcess;
 	}
 
 	char inputchar = getchar();
@@ -478,7 +484,9 @@ int main() {
 		interruptFlag = 1;
 		IVT[2]();
 	}
-
+	for (int i = 0; i < MAX_PROCESSES; i++) {
+		printf("Process ID: %d, Process PC: %d, Process ACC: %d, Process State: %d, Process Time: %d\n", processTable[i].pid, processTable[i].pc, processTable[i].acc, processTable[i].state, processTable[i].time);
+	}
         fetch();
         if (IR) {
 		bool processesComplete = true;
@@ -487,7 +495,6 @@ int main() {
 				processesComplete = false;
 			}
 		}
-
        		if (processesComplete) {
 			break;
 		}
