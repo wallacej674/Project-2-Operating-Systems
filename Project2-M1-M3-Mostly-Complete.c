@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include <string.h>
 
-// the global vairables and registers.
+// the global variables and registers.
 int PC = 0; //Program Counter
 int ACC = 0; //Accumulator
 int IR = 0; //Instruction register
@@ -63,6 +63,31 @@ struct PCB {
 
 struct PCB processTable[MAX_PROCESSES];
 
+// Interrupts (M4)
+void (*IVT[3])(); // Interrupt Vector Table
+
+void timerInterrupt() {
+	// Handle timer interrupt, call dispatcher if needed
+	printf("TIMER INTERRUPT! 2 seconds.\n");
+	sleep(2);
+	printf("Timer done. Setting another alarm in 8 seconds.\n");
+	alarm(8);
+}
+
+void ioInterrupt() {
+	// Handle I/O interrupt
+	printf("I/O INTERRUPT! 2 seconds.\n");
+	sleep(2);
+	printf("I/O done.\n");
+}
+
+void systemCallInterrupt() {
+	// Handle system call interrupt
+	printf("SYSTEM CALL INTERRUPT! 2 seconds.\n");
+	sleep(2);
+	printf("System call done.\n");
+}
+
 
 void initProcesses() {
 	for (int i = 0; i < MAX_PROCESSES; i++) {
@@ -70,7 +95,7 @@ void initProcesses() {
 		processTable[i].pc = 0;
 		processTable[i].acc = 0;
 		processTable[i].state = 0; // ready state
-		processTable[i].time = rand() % 15;
+		processTable[i].time = rand() % 25;
 	}
 }
 
@@ -88,18 +113,25 @@ void contextSwitch(int currProcess, int nextProcess) {
 	printf("Context switch complete! Process %d to Process %d\n", processTable[currProcess].pid, processTable[nextProcess].pid);
 }
 
+void dispatcher(int currentProcess, int nextProcess) {
+	contextSwitch(currentProcess, nextProcess);
+}
+
 void scheduler() {
 	// implement round-robin scheduling
 	// use a loop to cycle through processes and manage their state
-	printf("All Process Data!\n");
-	for (int i = 0; i < MAX_PROCESSES; i++) {
-		printf("Process ID: %d, Process PC: %d, Process ACC: %d, Process State: %d, Process Time: %d\n", processTable[i].pid, processTable[i].pc, processTable[i].acc, processTable[i].state, processTable[i].time);
-	}
 	int nextProcess = (currentProcess + 1) % MAX_PROCESSES;
+	printf("Current Process ID: %d, State: %d, Time: %d\n", processTable[nextProcess].pid, processTable[nextProcess].state, processTable[nextProcess].time);
 	while (processTable[nextProcess].state == 3) {
 		nextProcess = (nextProcess + 1) % MAX_PROCESSES;
+		printf("Current Process ID: %d, State: %d, Time: %d\n", processTable[nextProcess].pid, processTable[nextProcess].state, processTable[nextProcess].time);
 		if (nextProcess == currentProcess) {
+			if (processTable[nextProcess].state != 3) {
+				contextSwitch(currentProcess, nextProcess);
+				currentProcess = nextProcess;
+			} else {
 			printf("All processes complete.");
+			}
 			return;
 		}
 	}
@@ -422,13 +454,46 @@ int main() {
     loadProgram(); // Load the program into memory
     initProcesses(); // Initialize process table
     initCache();
+    IVT[0] = timerInterrupt;
+    IVT[1] = ioInterrupt;
+    IVT[2] = systemCallInterrupt;
+
+    signal(SIGALRM, IVT[0]);
+    alarm(1);
+
+    int inputchar;
+
     while (1) {
-        scheduler();
+	if (interruptFlag) {
+		interruptFlag = 0;
+		scheduler();
+	}
+
+	char inputchar = getchar();
+
+	if (inputchar == 'k') {
+		interruptFlag = 1;
+		IVT[1]();
+	} else if (inputchar == 's') {
+		interruptFlag = 1;
+		IVT[2]();
+	}
+
         fetch();
-        if(IR){
-        decode();
-        execute();
-        processTable[currentProcess].pc = PC;
+        if (IR) {
+		bool processesComplete = true;
+		for (int i = 0; i < MAX_PROCESSES; i++) {
+			if (processTable[i].state != 3) {
+				processesComplete = false;
+			}
+		}
+
+       		if (processesComplete) {
+			break;
+		}
+		decode();
+        	execute();
+        	processTable[currentProcess].pc = PC;
 		processTable[currentProcess].acc = ACC;
 		processTable[currentProcess].time -= TIME_SLICE;
 
@@ -437,18 +502,19 @@ int main() {
 			processTable[currentProcess].state = 3;
             } 
             else if (processTable[currentProcess].state != 3) {
-			        processTable[currentProcess].state = 0;
-                    }
+		    processTable[currentProcess].state = 0;
+	    }
         }
-        else{
+        else {
             printf("System: All instructions have been processed\n");
             break;
-        }
- //Add logic to break when program completes or an error occurs
-    printf("FINAL CHECK:\n");
-	for (int i = 0; i < MAX_PROCESSES; i++) {
-		printf("Process ID: %d, Process PC: %d, Process ACC: %d, Process State: %d, Process Time: %d\n", processTable[i].pid, processTable[i].pc, processTable[i].acc, processTable[i].state, processTable[i].time);
 	}
+	scheduler();
+ }
+ // PROCESSES COMPLETE
+ for (int i = 0; i < MAX_PROCESSES; i++) {
+	 printf("Process ID: %d, Process PC: %d, Process ACC: %d, Process State: %d, Process Time: %d\n", processTable[i].pid, processTable[i].pc, processTable[i].acc, processTable[i].state, processTable[i].time);
  }
  return 0;
 }
+
