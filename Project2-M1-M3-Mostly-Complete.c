@@ -61,6 +61,16 @@ struct PCB {
 	int time; // Process time
 };
 
+// Memory Block struct.
+struct MemoryBlock {
+    int processID;
+    int memoryStart;
+    int memoryEnd;
+    int isFree; //1 = Free, 0 = Allocated
+    };
+struct MemoryBlock memoryTable[RAM_SIZE / 100]; //Example: divide RAM into blocks
+
+
 struct PCB processTable[MAX_PROCESSES];
 
 // Interrupts (M4)
@@ -89,6 +99,53 @@ void systemCallInterrupt() {
 	printf("System call done.\n");
 }
 
+void initMemoryTable() {
+    int temp = RAM_SIZE; 
+    for (int i = 0; i < RAM_SIZE / 100; i++) {
+    memoryTable[i].processID = -1; //Mark all blocks as free
+    memoryTable[i].isFree = 1;
+    memoryTable[i].memoryStart = i * (RAM_SIZE/(RAM_SIZE  / 100)); // Initialize memoryStart
+    memoryTable[i].memoryEnd = (i + 1) * (RAM_SIZE / (RAM_SIZE / 100)) - 1; // Initialize memoryEnd
+    }
+}
+
+void allocateMemory(int processID, int size) {
+ //Implement First-Fit or Best-Fit allocation strategy
+ //first fit being used.
+ bool successful_alloc = false;
+ for(int i = 0; i < RAM_SIZE / 100; i ++){
+    
+int memsize = memoryTable[i].memoryEnd - memoryTable[i].memoryStart;
+ if(memoryTable[i].isFree == 1 && memsize >= size){
+    memoryTable[i].processID = processID;
+    memoryTable[i].isFree = 0;
+    successful_alloc = true;
+    printf("Memory Allocation: ProcessID: %d Memory Start: %d, Memory End: %d \n", processID, memoryTable[i].memoryStart, memoryTable[i].memoryEnd);
+    break;
+ }
+
+ }
+ if(!successful_alloc){
+    printf("Memory Allocation Error: Not enough space for Process %d \n", processID);
+ }
+}
+
+void deallocateMemory(int processID) {
+ //Implement logic to free allocated memory
+ bool successful_dealloc = false;
+ for (int i = 0; i < RAM_SIZE / 100; i++){
+    if (memoryTable[i].processID == processID){
+        memoryTable[i].processID = -1;
+        memoryTable[i].isFree = 1;
+        printf("Memory Deallocation: ProcessID: %d Memory Start: %d Memory End: %d \n", processID, memoryTable[i].memoryStart, memoryTable[i].memoryEnd);
+        successful_dealloc = true;
+        break;
+    }
+ }
+ if(!successful_dealloc){
+    printf("Memory Deallocation Error: ProcessID not found\n");
+ }
+}
 
 void initProcesses() {
 	for (int i = 0; i < MAX_PROCESSES; i++) {
@@ -97,6 +154,7 @@ void initProcesses() {
 		processTable[i].acc = 0;
 		processTable[i].state = 0; // ready state
 		processTable[i].time = rand() % 25;
+        allocateMemory(processTable[i].pid, 1);
 	}
 }
 
@@ -124,6 +182,7 @@ void scheduler() {
 	int nextProcess = (currentProcess + 1) % MAX_PROCESSES;
 	printf("Current Process ID: %d, State: %d, Time: %d\n", processTable[nextProcess].pid, processTable[nextProcess].state, processTable[nextProcess].time);
 	while (processTable[nextProcess].state == 3) {
+        deallocateMemory(processTable[nextProcess].pid);
 		nextProcess = (nextProcess + 1) % MAX_PROCESSES;
 		printf("Current Process ID: %d, State: %d, Time: %d\n", processTable[nextProcess].pid, processTable[nextProcess].state, processTable[nextProcess].time);
 		if (nextProcess == currentProcess) {
@@ -141,14 +200,6 @@ void scheduler() {
 		currentProcess = nextProcess;
 	}
 }
-
-struct MemoryBlock {
-    int processID;
-    int memoryStart;
-    int memoryEnd;
-    int isFree; //1 = Free, 0 = Allocated
-    };
-struct MemoryBlock memoryTable[RAM_SIZE / 100]; //Example: divide RAM into blocks
 
 void initCache() {
     for (int i = 0; i < L1_SIZE; i++) {
@@ -284,51 +335,8 @@ void writeMemory(int address, int value) {
 }
 
 
-void initMemoryTable() {
-    for (int i = 0; i < MEMORY_TABLE_SIZE; i++) {
-    memoryTable[i].processID = -1; //Mark all blocks as free
-    memoryTable[i].isFree = 1;
-    memoryTable[i].memoryStart = i * (RAM_SIZE / MEMORY_TABLE_SIZE); // Initialize memoryStart
-    memoryTable[i].memoryEnd = (i + 1) * (RAM_SIZE / MEMORY_TABLE_SIZE) - 1; // Initialize memoryEnd
-    }
 
-}
 
-void allocateMemory(int processID, int size) {
- //Implement First-Fit or Best-Fit allocation strategy
- //first fit being used.
- bool successful_alloc = false;
- for(int i = 0; i < RAM_SIZE / 100; i ++){
- if(memoryTable[i].isFree && (memoryTable[i].memoryEnd - memoryTable[i].memoryStart + 1) >= size){
-    memoryTable[i].processID = processID;
-    memoryTable[i].isFree = 0;
-    successful_alloc = true;
-    printf("Memory Allocation: ProcessID: %d Memory Start: %d, Memory End: %d \n", processID, memoryTable[i].memoryStart, memoryTable[i].memoryEnd);
-    break;
- }
-
- }
- if(!successful_alloc){
-    printf("Memory Allocation Error: Not enough space for Process %d \n", processID);
- }
-}
-
-void deallocateMemory(int processID) {
- //Implement logic to free allocated memory
- bool successful_dealloc = false;
- for (int i = 0; i < RAM_SIZE / 100; i++){
-    if (memoryTable[i].processID == processID){
-        memoryTable[i].processID = -1;
-        memoryTable[i].isFree = 1;
-        printf("Memory Deallocation: ProcessID: %d Memory Start: %d Memory End: %d \n", processID, memoryTable[i].memoryStart, memoryTable[i].memoryEnd);
-        successful_dealloc = true;
-        break;
-    }
- }
- if(!successful_dealloc){
-    printf("Memory Deallocation Error: ProcessID not found\n");
- }
-}
 
 // Insturction System below
 void fetch() {
