@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <pthread.h> //For threading
 
 // the global variables and registers.
 int PC = 0; //Program Counter
