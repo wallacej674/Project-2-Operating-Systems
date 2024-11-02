@@ -494,7 +494,21 @@ void* interrupt_task(void* args) {
 	}
 
 }
-
+void* cpu_task(void* args){
+    while(1){
+    pthread_mutex_lock(&mutex);
+    fetch();
+        if (IR) {
+		decode();
+        execute();
+    }
+    else{
+        break;
+    }
+    pthread_mutex_unlock(&mutex);
+    sleep(1);
+}
+}
 int main() {
     srand(time(NULL));
     loadProgram(); // Load the program into memory
@@ -506,9 +520,11 @@ int main() {
 
     pthread_t schedulerThread;
     pthread_t interruptThread;
+    pthread_t cpuThread;
 
     pthread_create(&schedulerThread, NULL, scheduler_task, NULL);
     pthread_create(&interruptThread, NULL, interrupt_task, NULL);
+    pthread_create(&cpuThread, NULL, cpu_task, NULL);
 
     while (1) {
 	bool processesComplete = true;
@@ -523,6 +539,7 @@ int main() {
     }
     pthread_join(schedulerThread, NULL);
     pthread_join(interruptThread, NULL);
+    pthread_join(cpuThread, NULL);
     // PROCESSES COMPLETE
     for (int i = 0; i < MAX_PROCESSES; i++) {
 	    printf("Process ID: %d, Process PC: %d, Process ACC: %d, Process State: %d, Process Time: %d\n", processTable[i].pid, processTable[i].pc, processTable[i].acc, processTable[i].state, processTable[i].time);
