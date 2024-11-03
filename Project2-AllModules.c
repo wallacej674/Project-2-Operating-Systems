@@ -189,14 +189,17 @@ for(int i = 0; i < L2_SIZE; i++){
 return false;
 }
 
-void updateCache(int address){
+void *updateCache(void *arg){
+    pthread_mutex_lock(&mutex);
+    int address = *(int *)arg;
     int value = RAM[address];
+
     // if space in cache L1
     for (int i = 0; i < L1_SIZE; i++){
         if(L1Cache[i] == -1){
             L1Tags[i] = address;
             L1Cache[i] = value;
-            return;
+            return NULL;
         }
     }
 
@@ -205,7 +208,7 @@ void updateCache(int address){
         if(L2Cache[i] == -1){
             L2Tags[i] = address;
             L2Cache[i] = value;
-            return;
+            return NULL;
         }
     }
 
@@ -240,10 +243,13 @@ void updateCache(int address){
 	//adds the new value to cache L1
 	L1Cache[L1_SIZE - 1] = value;
     L1Tags[L1_SIZE - 1] = address;
+
+    pthread_mutex_unlock(&mutex);
+    return NULL;
+
 }
 
 int accessMemory(int address){
-    
     //if in cache 1
     for(int i = 0; i < L1_SIZE; i++){
         if(address == L1Tags[i]){
@@ -262,7 +268,14 @@ int accessMemory(int address){
 
     //if in neither then update the cache and pull from the RAM.
     printf("Cache miss pulled from RAM\n");
-    updateCache(address);
+
+    //Making the thread to go through the update system.
+    pthread_t updateCacheThread;
+    int *arg = malloc(sizeof(int));
+    *arg = address;
+    pthread_create(&updateCacheThread, NULL, updateCache, arg);
+    pthread_join(updateCacheThread, NULL);
+    free(arg);
     return RAM[address];
 }
 
@@ -282,7 +295,14 @@ void writeMemory(int address, int value) {
             }
         }
     }
-	updateCache(address);
+	
+    //Making the thread to go through the update system.
+    pthread_t updateCacheThread;
+    int *arg = malloc(sizeof(int));
+    *arg = address;
+    pthread_create(&updateCacheThread, NULL, updateCache, arg);
+    pthread_join(updateCacheThread, NULL);
+    free(arg);
 }
 
 
@@ -509,6 +529,7 @@ void* cpu_task(void* args){
     sleep(1);
 }
 }
+
 int main() {
     srand(time(NULL));
     loadProgram(); // Load the program into memory
