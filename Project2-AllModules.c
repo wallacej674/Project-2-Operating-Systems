@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <signal.h>
 #include <unistd.h>
@@ -134,6 +135,7 @@ void scheduler() {
 				currentProcess = nextProcess;
 			} else {
 				printf("All processes complete.\n");
+				break;
 			}
 			return;
 		}
@@ -190,10 +192,8 @@ return false;
 }
 
 void *updateCache(void *arg){
-    pthread_mutex_lock(&mutex);
-    int address = *(int *)arg;
+	int address = *(int *)arg;
     int value = RAM[address];
-
     // if space in cache L1
     for (int i = 0; i < L1_SIZE; i++){
         if(L1Cache[i] == -1){
@@ -244,12 +244,11 @@ void *updateCache(void *arg){
 	L1Cache[L1_SIZE - 1] = value;
     L1Tags[L1_SIZE - 1] = address;
 
-    pthread_mutex_unlock(&mutex);
     return NULL;
-
 }
 
 int accessMemory(int address){
+    
     //if in cache 1
     for(int i = 0; i < L1_SIZE; i++){
         if(address == L1Tags[i]){
@@ -268,14 +267,13 @@ int accessMemory(int address){
 
     //if in neither then update the cache and pull from the RAM.
     printf("Cache miss pulled from RAM\n");
-
-    //Making the thread to go through the update system.
     pthread_t updateCacheThread;
     int *arg = malloc(sizeof(int));
     *arg = address;
     pthread_create(&updateCacheThread, NULL, updateCache, arg);
     pthread_join(updateCacheThread, NULL);
     free(arg);
+
     return RAM[address];
 }
 
@@ -295,8 +293,7 @@ void writeMemory(int address, int value) {
             }
         }
     }
-	
-    //Making the thread to go through the update system.
+    // Making the thread go through the update system.
     pthread_t updateCacheThread;
     int *arg = malloc(sizeof(int));
     *arg = address;
@@ -473,8 +470,8 @@ void loadProgram() {
 }
 
 void* scheduler_task(void* args) {
+	printf("scheduler thread called.\n");
 	while (1) {
-		pthread_mutex_lock(&mutex);
 		if (interruptFlag) {
 			printf("Interrupt detected in scheduler.\n");
 			int nextProcess = (currentProcess + 1) % MAX_PROCESSES;
@@ -487,19 +484,19 @@ void* scheduler_task(void* args) {
 			currentProcess = nextProcess;
 			interruptFlag = 0;
 		} else {
-			pthread_mutex_unlock(&mutex);
 			scheduler();
+			sleep(3);
 		}
-		pthread_mutex_unlock(&mutex);
 	}
+	return NULL;
 }
 void* interrupt_task(void* args) {
+	printf("interrupt thread called.\n");
 	signal(SIGALRM, timerInterrupt);
 	alarm(1);
 
 	while (1) {
 		char input = getchar();
-		pthread_mutex_lock(&mutex);
 		if (input == 'k') {
 			printf("I/O interrupt triggered.\n");
 			IVT[1]();
@@ -510,30 +507,38 @@ void* interrupt_task(void* args) {
 			printf("Setting up timer interrupt in 5 seconds.\n");
 			alarm(5);
 		}
-		pthread_mutex_unlock(&mutex);
 	}
+	return NULL;
+}
 
-}
-void* cpu_task(void* args){
-    while(1){
-    pthread_mutex_lock(&mutex);
-    fetch();
-        if (IR) {
-		decode();
-        execute();
-    }
-    else{
-        break;
-    }
-    pthread_mutex_unlock(&mutex);
-    sleep(1);
-}
+void* cpu_task(void* args) {
+	printf("cpu thread called.\n");
+	while (1) {
+		fetch();
+		if (IR) {
+			decode();
+			execute();
+			processTable[currentProcess].time = processTable[currentProcess].time - TIME_SLICE;
+			printf("New Time: %d, for Process ID: %d\n", processTable[currentProcess].time, processTable[currentProcess].pid);
+			if (processTable[currentProcess].time <= 0) {
+				processTable[currentProcess].time = 0;
+				processTable[currentProcess].state = 3;
+			} else {
+				processTable[currentProcess].state = 0;
+			}
+			sleep(1);
+		} else {
+			printf("No IR detected, %d\n", IR);
+			break;
+		}
+	}
+	return NULL;
 }
 
 int main() {
     srand(time(NULL));
-    loadProgram(); // Load the program into memory
-    initProcesses(); // Initialize process table
+    loadProgram();
+    initProcesses();
     initCache();
     IVT[0] = timerInterrupt;
     IVT[1] = ioInterrupt;
@@ -547,20 +552,10 @@ int main() {
     pthread_create(&interruptThread, NULL, interrupt_task, NULL);
     pthread_create(&cpuThread, NULL, cpu_task, NULL);
 
-    while (1) {
-	bool processesComplete = true;
-	for (int i = 0; i < MAX_PROCESSES; i++) {
-		if (processTable[i].state != 3) {
-			processesComplete = false;
-		}
-	}
-	if (processesComplete) {
-		break;
-	}
-    }
     pthread_join(schedulerThread, NULL);
     pthread_join(interruptThread, NULL);
     pthread_join(cpuThread, NULL);
+
     // PROCESSES COMPLETE
     for (int i = 0; i < MAX_PROCESSES; i++) {
 	    printf("Process ID: %d, Process PC: %d, Process ACC: %d, Process State: %d, Process Time: %d\n", processTable[i].pid, processTable[i].pc, processTable[i].acc, processTable[i].state, processTable[i].time);
