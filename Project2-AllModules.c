@@ -137,13 +137,13 @@ void scheduler() {
 				printf("All processes complete.\n");
 				break;
 			}
-			return;
 		}
 	}
 	if (processTable[nextProcess].state == 0) {
 		contextSwitch(currentProcess, nextProcess);
 		currentProcess = nextProcess;
 	}
+	return;
 }
 
 struct MemoryBlock {
@@ -469,33 +469,56 @@ void loadProgram() {
     RAM[9] = 6;
 }
 
+bool complete_processes() {
+	for (int i = 0; i < MAX_PROCESSES; i++) {
+		if (processTable[i].state != 3) {
+			return false;
+		}
+	}
+	return true;
+}
+
+
 void* scheduler_task(void* args) {
-	printf("scheduler thread called.\n");
 	while (1) {
 		if (interruptFlag) {
 			printf("Interrupt detected in scheduler.\n");
 			int nextProcess = (currentProcess + 1) % MAX_PROCESSES;
 			int count = 0;
-			while (processTable[nextProcess].state == 3) {
-				nextProcess = (count + 1) % MAX_PROCESSES;
+			while (processTable[nextProcess].state == 3 && count < MAX_PROCESSES) {
+				nextProcess = (nextProcess + 1) % MAX_PROCESSES;
 				count++;
 			}
-			dispatcher(currentProcess, nextProcess);
-			currentProcess = nextProcess;
+			if (processTable[nextProcess].state != 3) {
+				dispatcher(currentProcess, nextProcess);
+				currentProcess = nextProcess;
+			} else {
+				printf("All processes complete. Detected in interrupted scheduler_task\n");
+				break;
+			}
 			interruptFlag = 0;
 		} else {
-			scheduler();
-			sleep(3);
+			if (complete_processes()) {
+				printf("All processes complete. Detected in uninterrupted scheduler_task.\n");
+				break;
+			} else {
+				printf("Scheduler not interrupted.\n");
+				scheduler();
+				sleep(3);
+			}
 		}
 	}
 	return NULL;
 }
 void* interrupt_task(void* args) {
-	printf("interrupt thread called.\n");
 	signal(SIGALRM, timerInterrupt);
 	alarm(1);
 
 	while (1) {
+		if (complete_processes()) {
+			printf("All processes complete. Detected in interrupt_task.\n");
+			break;
+		}
 		char input = getchar();
 		if (input == 'k') {
 			printf("I/O interrupt triggered.\n");
@@ -512,8 +535,13 @@ void* interrupt_task(void* args) {
 }
 
 void* cpu_task(void* args) {
-	printf("cpu thread called.\n");
 	while (1) {
+		while (interruptFlag) {
+		}
+		if (complete_processes()) {
+			printf("all processes complete. detected in cpu_task.\n");
+			break;
+		}
 		fetch();
 		if (IR) {
 			decode();
@@ -528,7 +556,7 @@ void* cpu_task(void* args) {
 			}
 			sleep(1);
 		} else {
-			printf("No IR detected, %d\n", IR);
+			printf("No IR detected.\n");
 			break;
 		}
 	}
