@@ -76,20 +76,25 @@ void timerInterrupt() {
 	interruptFlag = 1;
 	sleep(2);
 	printf("Timer done.\n");
+	interruptFlag = 0;
 }
 
 void ioInterrupt() {
 	// Handle I/O interrupt
 	printf("I/O INTERRUPT! 2 seconds.\n");
+	interruptFlag = 1;
 	sleep(2);
 	printf("I/O done.\n");
+	interruptFlag = 0;
 }
 
 void systemCallInterrupt() {
 	// Handle system call interrupt
 	printf("SYSTEM CALL INTERRUPT! 2 seconds.\n");
+	interruptFlag = 1;
 	sleep(2);
 	printf("System call done.\n");
+	interruptFlag = 0;
 }
 
 
@@ -99,7 +104,7 @@ void initProcesses() {
 		processTable[i].pc = 0;
 		processTable[i].acc = 0;
 		processTable[i].state = 0; // ready state
-		processTable[i].time = rand() % 25;
+		processTable[i].time = (rand() % 24) + 1;
 	}
 }
 
@@ -491,12 +496,11 @@ void* scheduler_task(void* args) {
 			if (processTable[nextProcess].state != 3) {
 				dispatcher(currentProcess, nextProcess);
 				currentProcess = nextProcess;
-				sleep(1);
+				interruptFlag = 0;
 			} else {
 				printf("All processes complete. Detected in interrupted scheduler_task\n");
 				break;
 			}
-			interruptFlag = 0;
 		} else {
 			if (complete_processes()) {
 				printf("All processes complete. Detected in uninterrupted scheduler_task.\n");
@@ -534,11 +538,11 @@ void* interrupt_task(void* args) {
 
 void* cpu_task(void* args) {
 	while (1) {
-		while (interruptFlag) {
-		}
 		if (complete_processes()) {
 			printf("all processes complete. detected in cpu_task.\n");
 			break;
+		}
+		while (interruptFlag) {
 		}
 		fetch();
 		if (IR) {
