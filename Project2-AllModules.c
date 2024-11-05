@@ -125,10 +125,9 @@ void scheduler() {
 	// implement round-robin scheduling
 	// use a loop to cycle through processes and manage their state
 	int nextProcess = (currentProcess + 1) % MAX_PROCESSES;
-	printf("Current Process ID: %d, State: %d, Time: %d\n", processTable[nextProcess].pid, processTable[nextProcess].state, processTable[nextProcess].time);
 	while (processTable[nextProcess].state == 3) {
 		nextProcess = (nextProcess + 1) % MAX_PROCESSES;
-		printf("Current Process ID: %d, State: %d, Time: %d\n", processTable[nextProcess].pid, processTable[nextProcess].state, processTable[nextProcess].time);
+		printf("Next Process ID: %d, State: %d, Time: %d\n", processTable[nextProcess].pid, processTable[nextProcess].state, processTable[nextProcess].time);
 		if (nextProcess == currentProcess) {
 			if (processTable[nextProcess].state != 3) {
 				contextSwitch(currentProcess, nextProcess);
@@ -458,7 +457,7 @@ void execute() {
 
 void loadProgram() {
     RAM[0] = LOAD_operation; // load a value into ACC
-    RAM[1] = 7;  // Operand for ADD
+    RAM[1] = 7;  // Operand for LOAD
     RAM[2] = SUB_operation; // SUB
     RAM[3] = 2;  // Operand for SUB
     RAM[4] = ADD_operation;
@@ -492,6 +491,7 @@ void* scheduler_task(void* args) {
 			if (processTable[nextProcess].state != 3) {
 				dispatcher(currentProcess, nextProcess);
 				currentProcess = nextProcess;
+				sleep(1);
 			} else {
 				printf("All processes complete. Detected in interrupted scheduler_task\n");
 				break;
@@ -502,9 +502,8 @@ void* scheduler_task(void* args) {
 				printf("All processes complete. Detected in uninterrupted scheduler_task.\n");
 				break;
 			} else {
-				printf("Scheduler not interrupted.\n");
 				scheduler();
-				sleep(3);
+				sleep(1);
 			}
 		}
 	}
@@ -512,7 +511,6 @@ void* scheduler_task(void* args) {
 }
 void* interrupt_task(void* args) {
 	signal(SIGALRM, timerInterrupt);
-	alarm(1);
 
 	while (1) {
 		if (complete_processes()) {
@@ -546,7 +544,10 @@ void* cpu_task(void* args) {
 		if (IR) {
 			decode();
 			execute();
+			processTable[currentProcess].pc = PC;
+			processTable[currentProcess].acc = ACC;
 			processTable[currentProcess].time = processTable[currentProcess].time - TIME_SLICE;
+			printf("Current Process: %d, PC: %d, ACC: %d.\n", processTable[currentProcess].pid, processTable[currentProcess].pc, processTable[currentProcess].acc);
 			printf("New Time: %d, for Process ID: %d\n", processTable[currentProcess].time, processTable[currentProcess].pid);
 			if (processTable[currentProcess].time <= 0) {
 				processTable[currentProcess].time = 0;
@@ -576,10 +577,16 @@ int main() {
     pthread_t interruptThread;
     pthread_t cpuThread;
 
+
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+	    printf("Process ID: %d, Process PC: %d, Process ACC: %d, Process State: %d, Process Time: %d\n", processTable[i].pid, processTable[i].pc, processTable[i].acc, processTable[i].state, processTable[i].time);
+    }
+
+
+    pthread_create(&cpuThread, NULL, cpu_task, NULL);
     pthread_create(&schedulerThread, NULL, scheduler_task, NULL);
     pthread_create(&interruptThread, NULL, interrupt_task, NULL);
-    pthread_create(&cpuThread, NULL, cpu_task, NULL);
-
+    
     pthread_join(schedulerThread, NULL);
     pthread_join(interruptThread, NULL);
     pthread_join(cpuThread, NULL);
